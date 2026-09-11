@@ -96,7 +96,6 @@ def kernel_stats(events, query):
             "avg_us": sum(d) / len(d),
             "min_us": min(d),
             "max_us": max(d),
-            "first_start_us": min(e["ts"] for e in hits if e["name"] == name),
         }
         for name, d in by_name.items()
     }
@@ -117,7 +116,6 @@ def model_counts(events):
         "decoder_layer_executions": len(layers),
         "layers_per_pass": len(layers) / passes if passes else None,
         "attention_executions": len(attention),
-        "attention_labels": sorted({e["name"] for e in attention}),
     }
 
 
@@ -158,7 +156,7 @@ def main():
     m = model_counts(events)
     top = top_kernels(events, args.top)
 
-    print(f"== {args.trace} ({len(events):,} events) ==\n")
+    print(f"== {args.trace} ==\n")
     print("[1] CPU / GPU time")
     print(f"    CPU wall time (CS2470Profile_MyCode) : {t['cpu_wall_ms']:10.2f} ms")
     print(f"    CPU time inside aten ops             : {t['cpu_in_aten_ms']:10.2f} ms")
@@ -174,12 +172,9 @@ def main():
               f" | min {s['min_us']:.1f} us | max {s['max_us']:.1f} us")
     print()
 
-    print("[3] Decoder layers")
-    print(f"    executions: {m['decoder_layer_executions']} over {m['forward_passes']} forward passes"
-          f" ({m['layers_per_pass']:g} layers per pass)" if m["layers_per_pass"] else
-          f"    executions: {m['decoder_layer_executions']}")
-    print("[4] Attention blocks")
-    print(f"    executions: {m['attention_executions']}  (labels: {', '.join(m['attention_labels']) or 'none'})\n")
+    per_pass = f" ({m['layers_per_pass']:g} per forward pass)" if m["layers_per_pass"] else ""
+    print(f"[3] Decoder layer executions: {m['decoder_layer_executions']}{per_pass}")
+    print(f"[4] Attention block executions: {m['attention_executions']}\n")
 
     print(f"[5] Top {args.top} GPU kernels by total time (of {top['distinct_kernels']} distinct)")
     print(f"    {'rank':>4}  {'total ms':>9}  {'calls':>6}  {'% GPU':>6}  kernel")
@@ -189,7 +184,6 @@ def main():
     if args.json:
         with open(args.json, "w") as f:
             json.dump({"trace": args.trace, "time": t, "kernel": k, "counts": m, "top_kernels": top}, f, indent=2)
-        print(f"\nwrote {args.json}")
 
 
 if __name__ == "__main__":
