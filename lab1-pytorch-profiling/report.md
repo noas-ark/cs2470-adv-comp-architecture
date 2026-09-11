@@ -67,4 +67,16 @@ SDPA dispatches to PyTorch's unfused math fallback (`_scaled_dot_product_attenti
 ![One LlamaAttention block in Perfetto](images/q3_attention.jpg)
 *One `CS2470Profile_LlamaAttention` (about 1.1 ms of CPU time). `SDPA` holds the deepest stack of aten ops.*
 
-*Method:* zoomed into a `CS2470Profile_LlamaAttention` slice in Perfetto to read the ops under each sub-annotation, then extracted every `aten::` op nested inside all 800 attention slices from `profile.json`. All 784 decode calls produce the identical set of 35, and all 16 prefill calls produce the same set of 44.
+*Method:* I read the ops under each sub-annotation by zooming into one `CS2470Profile_LlamaAttention` slice in Perfetto (screenshot above). Many ops are too thin to read at that zoom, so I confirmed the list with Perfetto's SQL mode (prefix the search bar with `:`). This query takes one decode-step attention slice on the CPU thread and lists every `aten::` op nested beneath it:
+
+```sql
+SELECT name, COUNT(*) AS times
+FROM descendant_slice((
+  SELECT id FROM slice
+  WHERE name = 'CS2470Profile_LlamaAttention' AND category = 'user_annotation'
+  ORDER BY ts LIMIT 1 OFFSET 20))
+WHERE name LIKE 'aten::%'
+GROUP BY name ORDER BY MIN(ts)
+```
+
+It returns 35 rows, matching the table above. The counts also line up with the code: `aten::linear` runs 4 times (the Q, K, V, and O projections), `aten::scaled_dot_product_attention` once, and `aten::neg` twice (rotary embedding rotates both Q and K). `category = 'user_annotation'` selects the CPU copy of the annotation rather than its GPU-side mirror, and `OFFSET 20` skips the 16 prefill calls (`OFFSET 0` returns the prefill set of 44). Lastly, a script over `profile.json` checked all 800 attention slices: all 784 decode calls produce the identical set of 35, and all 16 prefill calls produce the same 44.
