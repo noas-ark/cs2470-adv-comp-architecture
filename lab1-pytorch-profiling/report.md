@@ -101,3 +101,103 @@ ORDER BY s.ts LIMIT 3
 ```
 
 The first row returns `start_ns = 6565311`, nested under `CS2470Profile_MyCode > CS2470Profile_DecoderLayer > CS2470Profile_MLP`. A second query confirmed that all 48 instances fall before the second forward pass begins on the GPU and all 48 sit inside `CS2470Profile_MLP`.
+
+### Q5. What is the GPU kernel name linked to the 3rd linear layer in Attention execution?
+
+The 3rd linear layer is `v_proj` (attention runs `q_proj`, `k_proj`, `v_proj`, `o_proj` in that order), and the kernel it launches depends on the phase:
+
+| Phase | Calls | Kernel(s) launched by `CS2470Profile_VProj` | Avg duration |
+|---|---|---|---|
+| Prefill | 16 | `ampere_sgemm_32x32_sliced1x4_tn`, then `cublasLt::splitKreduce_kernel<32, 16, int, float, ...>` | 23.1 µs + 1.6 µs |
+| Decode | 784 | `internal::gemvx::kernel<int, int, float, float, float, float, false, true, true, false, 9, false, cublasGemvParamsEx<...>>` | 18.3 µs |
+
+Prefill multiplies every prompt token at once (matrix × matrix), so cuBLAS runs a split-K SGEMM followed by a small kernel that sums the partial results. Decode multiplies a single token (matrix × vector), so it switches to a GEMV kernel. The point here is that the decode kernel matters most for runtime, since it accounts for about 14.4 ms across 784 calls compared to 0.4 ms for all 16 prefill calls. For that reason I would treat the decode `gemvx` kernel as the primary answer.
+
+`v_proj` shares its kernels with `k_proj`, not `q_proj`. With grouped-query attention, K and V each project to 512 values per token (8 heads × 64) while Q and O project to 2048 (32 heads × 64). cuBLAS picks a different kernel for each shape, which is why Q and O run `gemmSN_TN_kernel` in prefill and `gemv2T_kernel_val` in decode instead.
+
+*Method:* followed the `cudaLaunchKernel` flow from `CS2470Profile_VProj` to its GPU kernel in Perfetto for one prefill and one decode call. I then checked all 800 calls with a query that joins each projection's annotation to its kernels through the `flow` table.
+
+<details>
+<summary>Perfetto SQL query</summary>
+
+```sql
+WITH v AS (
+  SELECT id, ts, dur, track_id, name,
+         ROW_NUMBER() OVER (PARTITION BY name ORDER BY ts) AS rn
+  FROM slice
+  WHERE category = 'user_annotation'
+    AND name IN ('CS2470Profile_QProj', 'CS2470Profile_KProj',
+                 'CS2470Profile_VProj', 'CS2470Profile_OProj'))
+SELECT REPLACE(v.name, 'CS2470Profile_', '') AS proj,
+       CASE WHEN v.rn <= 16 THEN 'prefill' ELSE 'decode' END AS phase,
+       k.name AS kernel, COUNT(*) AS n, CAST(AVG(k.dur) AS INT) AS avg_ns
+FROM v
+JOIN slice l ON l.track_id = v.track_id AND l.ts >= v.ts
+            AND l.ts < v.ts + v.dur AND l.category = 'cuda_runtime'
+JOIN flow f ON f.slice_out = l.id
+JOIN slice k ON k.id = f.slice_in
+GROUP BY proj, phase, kernel
+ORDER BY proj, phase DESC
+```
+
+`rn <= 16` marks prefill because each projection runs once per layer (16 layers) in the first forward pass.
+</details>
+
+### Q6. List all of the annotations that correspond to the `vectorized_elementwise_kernel<4, AUnaryFunctor<float, float, float, MulFunctor<float>>, ...>` kernel.
+
+This kernel multiplies a tensor by a single scalar (`AUnaryFunctor` wraps a binary op with one operand fixed as a constant). It runs 1,700 times under two annotation stacks:
+
+| Annotation stack | aten op | Count | Why |
+|---|---|---|---|
+| `CS2470Profile_MyCode` > `CS2470Profile_DecoderLayer` > `CS2470Profile_LlamaAttention` > `CS2470Profile_SDPA` | `aten::mul` | 1,600 | 2 per attention call × 800 calls (the math SDPA backend scales Q and K by √scale before the matmul) |
+| `CS2470Profile_MyCode` > `CS2470Profile_RotaryEmbedding` | `aten::mul` | 100 | 2 per forward pass × 50 passes (`cos` and `sin` are multiplied by `attention_scaling`) |
+
+Each instance takes about 1.2 to 1.3 µs. The multiplies inside `CS2470Profile_ApplyRotary` do not show up here because `q * cos` and `rotate_half(q) * sin` multiply two tensors, which PyTorch routes to the `BinaryFunctor` kernel instead. The RotaryEmbedding multiplies are also wasted work in this model (`attention_scaling` is 1.0 for Llama 3.2's RoPE, so they multiply by one).
+
+*Method:* searched `AUnaryFunctor` in Perfetto and followed each match's preceding flow back to its `cudaLaunchKernel` to read the labels above it. I then grouped every instance of the kernel by its annotation stack with SQL.
+
+<details>
+<summary>Perfetto SQL query</summary>
+
+```sql
+SELECT (SELECT GROUP_CONCAT(REPLACE(a.name, 'CS2470Profile_', ''), ' > ')
+        FROM ancestor_slice(f.slice_out) a
+        WHERE a.name LIKE 'CS2470Profile_%') AS stack,
+       (SELECT p.name FROM slice p
+        WHERE p.id = (SELECT parent_id FROM slice WHERE id = f.slice_out)) AS op,
+       COUNT(*) AS n, CAST(AVG(k.dur) AS INT) AS avg_ns
+FROM slice k
+JOIN flow f ON f.slice_in = k.id
+WHERE k.name LIKE 'void at::native::vectorized_elementwise_kernel<4, at::native::AUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> >%'
+GROUP BY stack, op
+ORDER BY n DESC
+```
+</details>
+
+### Q7. How many instances are there of the rsqrt kernel?
+
+**1,650 GPU kernels** (`vectorized_elementwise_kernel<4, rsqrt_kernel_cuda(...)>`), which is one per RMSNorm call (50 forward passes × 33 norms). Every one launches from inside `CS2470Profile_RMSNorm`, and nothing else in the model calls rsqrt.
+
+Searching `rsqrt` in Perfetto returns 3,300 matches, though – each GPU kernel has a matching CPU op (`aten::rsqrt`) that launches it, so a name search double counts. Searching `rsqrt_kernel` matches only the GPU kernel and returns 1,650.
+
+*Method:* compared the Perfetto search counts for `rsqrt` (3,300) and `rsqrt_kernel` (1,650). I then split the matches by category with SQL and checked that every kernel's launch sits under `CS2470Profile_RMSNorm`.
+
+<details>
+<summary>Perfetto SQL query</summary>
+
+```sql
+SELECT s.category,
+       CASE WHEN s.category = 'kernel' THEN 'rsqrt kernel' ELSE s.name END AS what,
+       COUNT(*) AS n,
+       SUM(CASE WHEN s.category = 'kernel'
+                 AND (SELECT COUNT(*) FROM flow f
+                      JOIN ancestor_slice(f.slice_out) a
+                      WHERE f.slice_in = s.id AND a.name = 'CS2470Profile_RMSNorm') > 0
+                THEN 1 ELSE 0 END) AS in_rmsnorm
+FROM slice s
+WHERE s.name LIKE '%rsqrt%'
+GROUP BY s.category, what
+```
+
+Returns `cpu_op | aten::rsqrt | 1650 | 0` and `kernel | rsqrt kernel | 1650 | 1650`.
+</details>
