@@ -80,3 +80,24 @@ GROUP BY name ORDER BY MIN(ts)
 ```
 
 It returns 35 rows, matching the table above. The counts also line up with the code: `aten::linear` runs 4 times (the Q, K, V, and O projections), `aten::scaled_dot_product_attention` once, and `aten::neg` twice (rotary embedding rotates both Q and K). `category = 'user_annotation'` selects the CPU copy of the annotation rather than its GPU-side mirror, and `OFFSET 20` skips the 16 prefill calls (`OFFSET 0` returns the prefill set of 44). Lastly, a script over `profile.json` checked all 800 attention slices: all 784 decode calls produce the identical set of 35, and all 16 prefill calls produce the same 44.
+
+### Q4. What is the start time of the first `ampere_sgemm_64x32_sliced1x4_tn` kernel of the workload's execution?
+
+**00:00:00.006 565 311 in Perfetto, i.e. 6.565 ms after the trace starts** (raw `ts` in `profile.json`: 6168291221092.682 µs). The kernel runs for 322.7 µs inside the first decoder layer's `CS2470Profile_MLP` during prefill. Perfetto reports times relative to the start of the trace (when the profiler began recording), not the start of `CS2470Profile_MyCode`.
+
+This kernel appears 48 times, all during the prefill pass and all inside `CS2470Profile_MLP`: 16 layers × 3 MLP projections (`gate_proj`, `up_proj`, `down_proj`), each taking 297 to 323 µs. It never appears during decode. Prefill pushes every prompt token through the MLP at once, so each projection is a matrix-matrix multiply that cuBLAS maps to this SGEMM kernel. Decode processes one token per step, which turns the same projections into matrix-vector products that run on `gemv` kernels instead.
+
+![First ampere_sgemm_64x32_sliced1x4_tn kernel](images/q4_first_sgemm.jpg)
+*The first `ampere_sgemm_64x32_sliced1x4_tn` selected on GPU stream 7, nested under `CS2470Profile_MLP` in the first decoder layer. The details panel shows its start time and duration.*
+
+*Method:* searched the kernel name in Perfetto and stepped to the first of its 48 matches (search results are ordered by time). Confirmed with Perfetto's SQL mode:
+
+```sql
+SELECT s.ts - (SELECT start_ts FROM trace_bounds) AS start_ns, s.dur AS dur_ns,
+  (SELECT GROUP_CONCAT(a.name, ' > ') FROM ancestor_slice(s.id) a) AS inside
+FROM slice s
+WHERE s.name = 'ampere_sgemm_64x32_sliced1x4_tn'
+ORDER BY s.ts LIMIT 3
+```
+
+The first row returns `start_ns = 6565311`, nested under `CS2470Profile_MyCode > CS2470Profile_DecoderLayer > CS2470Profile_MLP`. A second query confirmed that all 48 instances fall before the second forward pass begins on the GPU and all 48 sit inside `CS2470Profile_MLP`.
