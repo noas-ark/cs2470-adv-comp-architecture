@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J gemma_profile
 #SBATCH -p gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:l4:1
 #SBATCH -c 8
 #SBATCH -t 00:45:00
 #SBATCH -o gemma_%j.log

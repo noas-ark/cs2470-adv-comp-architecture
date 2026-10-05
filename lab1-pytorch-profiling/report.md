@@ -5,7 +5,7 @@ CS2470 Advanced Computer Architecture, Fall 2026
 ## Setup
 
 - **Workload:** `meta-llama/Llama-3.2-1B` in fp32, batch size 1, prompt `"Hello, how are you?"`, `max_new_tokens=50` (1 prefill pass + 49 decode passes)
-- **Hardware:** NVIDIA A10G (Ampere) on the HUIT academic cluster
+- **Hardware:** NVIDIA L4 (Ada) on the HUIT academic cluster
 - **Software:** PyTorch 2.8.0+cu128, transformers 4.57.6
 - **Annotations:** `model.generate()` is wrapped in `CS2470Profile_MyCode` (Part III-A). Inside `modeling_llama.py` (Part III-B), `record_function` blocks mark `DecoderLayer`, `RMSNorm`, `LlamaAttention`, `MLP`, `RotaryEmbedding`, `Embedding`, and `LMHead`, plus `QProj`, `KProj`, `VProj`, `ApplyRotary`, `KVCacheUpdate`, `SDPA`, and `OProj` inside attention.
 
@@ -218,18 +218,18 @@ Returns `cpu_op | aten::rsqrt | 1650 | 0` and `kernel | rsqrt kernel | 1650 | 16
 python code/parse_profile.py profile.json --kernel ampere_sgemm_64x32_sliced1x4_tn --top 10 --json stats.json
 ```
 
-To run Gemma-2-2b through the same pipeline, `code/run_profiler.py` takes a `--model` flag and `code/annotate_gemma2.py` applies the same `CS2470Profile_` labels to `modeling_gemma2.py` (so the parser runs unchanged). `code/run_gemma.sbatch` runs annotation, profiling, and parsing as one batch job. Both models ran in fp32 with SDPA attention on the same A10G, with the same prompt and 50 new tokens.
+To run Gemma-2-2b through the same pipeline, `code/run_profiler.py` takes a `--model` flag and `code/annotate_gemma2.py` applies the same `CS2470Profile_` labels to `modeling_gemma2.py` (so the parser runs unchanged). `code/run_gemma.sbatch` runs annotation, profiling, and parsing as one batch job. Both models ran in fp32 with SDPA attention on an L4, with the same prompt and 50 new tokens. My first Gemma run landed on an A10G (the cluster assigns GPU nodes dynamically), which made the GPU times incomparable, so I reran it with `--gres=gpu:l4:1` to pin it to an L4.
 
 ### Results
 
 | Statistic | Llama-3.2-1B | Gemma-2-2b |
 |---|---|---|
-| CPU wall time (`CS2470Profile_MyCode`) | 1,839.99 ms | 3,755.49 ms |
-| CPU time inside aten ops | 1,166.52 ms | 2,336.22 ms |
-| GPU busy time | 1,041.54 ms | 1,199.99 ms |
-| GPU kernels launched | 41,417 | 83,419 |
-| GPU utilization (busy / wall) | 56.6% | 32.0% |
-| `ampere_sgemm_64x32_sliced1x4_tn` | 48 calls, 14.54 ms total, 302.9 µs avg | 130 calls, 17.70 ms total, 136.1 µs avg |
+| CPU wall time (`CS2470Profile_MyCode`) | 1,839.99 ms | 3,660.56 ms |
+| CPU time inside aten ops | 1,166.52 ms | 2,310.96 ms |
+| GPU busy time | 1,041.54 ms | 2,160.49 ms |
+| GPU kernels launched | 41,417 | 83,367 |
+| GPU utilization (busy / wall) | 56.6% | 59.0% |
+| `ampere_sgemm_64x32_sliced1x4_tn` | 48 calls, 14.54 ms total, 302.9 µs avg | 130 calls, 32.77 ms total, 252.0 µs avg |
 | Decoder layer executions | 800 (16 layers × 50 passes) | 1,300 (26 layers × 50 passes) |
 | Attention block executions | 800 | 1,300 |
 
@@ -243,20 +243,20 @@ To run Gemma-2-2b through the same pipeline, `code/run_profiler.py` takes a `--m
 | 4 | `internal::gemvx::kernel<...>` | 1,568 | 28.82 ms | 2.8% | Decode `k_proj` and `v_proj` |
 | 5 | `ampere_sgemm_64x32_sliced1x4_tn` | 48 | 14.54 ms | 1.4% | Prefill MLP |
 
-**Top 5 GPU kernels, Gemma-2-2b** (68 distinct kernels)
+**Top 5 GPU kernels, Gemma-2-2b** (67 distinct kernels)
 
 | Rank | Kernel | Calls | Total | % of GPU kernel time | Where it runs |
 |---|---|---|---|---|---|
-| 1 | `internal::gemvx::kernel<...>` | 3,822 | 440.30 ms | 36.7% | Decode GEMV, 3 per layer (1,274 decode layer executions) |
-| 2 | `gemv2T_kernel_val<...>` | 50 | 230.36 ms | 19.2% | LM head, once per token |
-| 3 | `internal::gemvx::kernel<...>` | 1,274 | 215.14 ms | 17.9% | Decode GEMV, 1 per layer |
-| 4 | `internal::gemvx::kernel<...>` | 5,096 | 159.18 ms | 13.3% | Decode GEMV, 4 per layer |
-| 5 | `elementwise_kernel<128, 2, ...>` | 10,555 | 19.77 ms | 1.6% | Broadcast elementwise ops (e.g. RMSNorm's scaling multiply) |
+| 1 | `internal::gemvx::kernel<...>` | 5,096 | 940.81 ms | 43.6% | Decode GEMV, 4 per layer (1,274 decode layer executions) |
+| 2 | `gemv2T_kernel_val<...>` | 1,324 | 548.12 ms | 25.4% | Decode GEMV, 1 per layer, plus the LM head once per token (1,274 + 50) |
+| 3 | `internal::gemvx::kernel<...>` | 1,274 | 416.11 ms | 19.3% | Decode GEMV, 1 per layer |
+| 4 | `internal::gemvx::kernel<...>` | 2,548 | 100.57 ms | 4.7% | Decode GEMV, 2 per layer |
+| 5 | `ampere_sgemm_64x32_sliced1x4_tn` | 130 | 32.77 ms | 1.5% | Prefill GEMM, 5 per layer |
 
-The biggest difference between the two models is CPU overhead, not GPU work. Gemma-2-2b has about twice the parameters of Llama-3.2-1B (2.6B vs 1.2B), yet its GPU busy time is only 15% higher (1,200 ms vs 1,042 ms). Its wall time doubles (3,755 ms vs 1,840 ms) because it launches twice as many kernels, which comes from 26 layers instead of 16 and 4 RMSNorms per layer instead of 2 (5,250 RMSNorm reductions vs 1,650). Both models spend about 45 µs of CPU time per kernel (1,840 ms / 41,417 and 3,755 ms / 83,419), so wall time tracks the number of kernels rather than the size of the model. The point here is that at batch size 1 in eager PyTorch, both workloads are bound by per-op CPU overhead, and Gemma's deeper, op-heavier layers push GPU utilization from 57% down to 32%.
+On the same GPU, Gemma-2-2b costs about twice as much as Llama-3.2-1B on every axis. It has about twice the parameters (2.6B vs 1.2B), and its GPU busy time is 2.07x higher (2,160 ms vs 1,042 ms). That tracks the weights, since decode at batch size 1 is memory-bound and reads every weight once per token. Its wall time is 1.99x higher (3,661 ms vs 1,840 ms) because it launches twice as many kernels, which comes from 26 layers instead of 16 and 4 RMSNorms per layer instead of 2 (5,250 RMSNorm reductions vs 1,650). Both models spend about 44 µs of CPU time per kernel (1,840 ms / 41,417 and 3,661 ms / 83,367), so wall time tracks the number of kernels. Since GPU work and launch count both roughly double, GPU utilization stays about the same (57% vs 59%). The point here is that at batch size 1 in eager PyTorch, both workloads leave the GPU idle about 40% of the time waiting on per-op CPU overhead.
 
-When the GPU is busy, it is almost entirely running matrix-vector multiplies. GEMV kernels account for 91% of Llama's GPU kernel time and 87% of Gemma's, and the LM head alone takes about 19% in both (201.8 ms and 230.4 ms across 50 calls) because every token multiplies against the full vocabulary (128,256 entries for Llama, 256,000 for Gemma). Attention math itself is small by comparison (about 3 ms of Llama's GEMV time sits inside SDPA).
+When the GPU is busy, it is almost entirely running matrix-vector multiplies. GEMV kernels account for 91% of Llama's GPU kernel time and 93% of Gemma's. For Llama the LM head alone takes 19% (201.8 ms across 50 calls) because every token multiplies against the full 128,256-entry vocabulary. Gemma's vocabulary is twice that (256,000), and its LM head shares a kernel with one of the per-layer projections, so it is folded into rank 2 above. Attention math itself is small by comparison (about 3 ms of Llama's GEMV time sits inside SDPA).
 
 In closing, I would expect the largest speedup for both models to come from cutting launch count (CUDA graphs, or `torch.compile` to fuse the many small elementwise and norm kernels) rather than from faster matmuls. This holds for batch size 1 in fp32 (larger batches turn these GEMVs into GEMMs and shift the balance back toward the GPU).
 
-*Method:* ran `code/parse_profile.py` on both traces (`--kernel sgemm` for Gemma, which reports both SGEMM variants it uses). The "Where it runs" column for Llama comes from matching each GEMV kernel's `cudaLaunchKernel` to its enclosing `CS2470Profile_` annotation. For Gemma I report calls per decode layer (49 decode passes × 26 layers = 1,274) rather than a projection-level breakdown.
+*Method:* ran `code/parse_profile.py` on both traces (`--kernel sgemm` for Gemma, which matches every SGEMM kernel by substring; on the L4 only `ampere_sgemm_64x32_sliced1x4_tn` shows up). The "Where it runs" column for Llama comes from matching each GEMV kernel's `cudaLaunchKernel` to its enclosing `CS2470Profile_` annotation. For Gemma I report calls per decode layer (49 decode passes × 26 layers = 1,274) rather than a projection-level breakdown.
