@@ -92,7 +92,7 @@ The 14 kernels before it belong to `generate()` setup rather than the model. The
 
 **Compute (SM) throughput is 38.77%, and memory throughput is 83.50%.** Kernel 75 is `ampere_sgemm_64x32_sliced1x4_tn` again, this time for layer 0 `up_proj` (2048 to 8192). It runs for 343.62 µs with a grid of (128, 1, 2) and 256 threads per block.
 
-Both numbers come from ncu's GPU Speed Of Light section, which reports how busy the compute and memory sides of the GPU were as a percentage of their peak. With memory at 83.50% and compute at 38.77%, this kernel is memory-bound, and DRAM throughput is also 83.50%, so that memory traffic is all DRAM. The reason is the shape of the problem. Prefill has only 7 tokens (BOS + 6), so the GEMM is a thin 7 × 2048 by 2048 × 8192 multiply that reads 64 MiB of fp32 weights and does little math per byte. The cache numbers fit this picture (L1/TEX 54.44%, L2 30.84%), since the weights stream through once with low reuse.
+Both numbers come from ncu's GPU Speed Of Light section, which reports how busy the compute and memory sides of the GPU were as a percentage of their peak. With memory at 83.50% and compute at 38.77%, this kernel is memory-bound, and DRAM throughput is also 83.50%, so DRAM is the busiest memory unit and the bottleneck. The reason is the shape of the problem. Prefill has only 7 tokens (BOS + 6), so the GEMM is a thin 7 × 2048 by 2048 × 8192 multiply that reads 64 MiB of fp32 weights and does little math per byte. The cache numbers fit this picture (L1/TEX 54.44%, L2 30.84%), since the weights stream through once with low reuse.
 
 ![Kernel 75 GPU Speed Of Light](images/q4_k75_speed_of_light.png)
 *Kernel 75's GPU Speed Of Light Throughput section, with Compute (SM) Throughput at 38.77% and Memory Throughput at 83.50%.*
@@ -149,18 +149,18 @@ Kernel 30 is `gemmSN_TN_kernel<float, 128, 16, 2, 4, 8, 9, 0, ...>`, the layer 0
 
 | Shared mem per block (incl. driver) | Blocks/SM | Theoretical occupancy | Limiter |
 |---|---|---|---|
-| 0 to ~14 KB | 7 | 58.3% | registers (72 regs × 128 threads) |
-| ~14.5 to ~16.5 KB | 6 | 50% | smem (kernel sits here) |
-| ~17 to ~20 KB | 5 | 41.7% | smem |
-| ~20.5 to ~24.5 KB | 4 | 33.3% | smem |
-| ~25 to ~33 KB | 3 | 25% | smem |
-| ~33.5 to ~50 KB | 2 | 16.7% | smem |
-| ~50.5 to ~99 KB | 1 | 8.3% | smem |
+| 0 to 14.6 KB | 7 | 58.3% | registers (72 regs × 128 threads) |
+| 14.6 to 17.1 KB | 6 | 50% | smem (kernel sits here) |
+| 17.1 to 20.5 KB | 5 | 41.7% | smem |
+| 20.5 to 25.6 KB | 4 | 33.3% | smem |
+| 25.6 to 34.1 KB | 3 | 25% | smem |
+| 34.1 to 51.2 KB | 2 | 16.7% | smem |
+| 51.2 to ~99 KB | 1 | 8.3% | smem |
 | > ~99 KB | 0 | 0% | can't launch (99 KB opt-in max per block) |
 
-The shape is flat on the left, where registers cap it at 58%, and then a staircase down as fewer blocks fit in the 100 KB of shared memory per SM (each block also carries the 1.02 KB driver reservation). The point here is that shared memory tuning would not buy much for this kernel. Cutting its shared memory by ~1 KB would only move theoretical occupancy from 50% to 58%, since registers become the cap at that point, and achieved occupancy (32.8%) is held down by the 0.74-wave grid anyway.
+The shape is flat on the left, where registers cap it at 58%, and then a staircase down as fewer blocks fit in the SM's 102.4 KB of shared memory (100 KiB), with each block also carrying the 1.02 KB driver reservation. The point here is that shared memory tuning would not buy much for this kernel. Cutting its shared memory by ~1 KB would only move theoretical occupancy from 50% to 58%, since registers become the cap at that point, and achieved occupancy (32.8%) is held down by the 0.74-wave grid anyway.
 
 ![Occupancy vs shared memory per block for kernel 30](images/q5f_occupancy_vs_smem.png)
 *Theoretical occupancy vs shared memory per block for kernel 30, computed from ncu's block limits (not a GUI screenshot). The x axis is the total per block, including the 1.02 KB driver reservation, and the kernel sits at 14.84 KB and 50%.*
 
-*Method:* the Occupancy section includes a chart called "Impact of Varying Shared Memory Usage Per Block". On the command line, `ncu -i ... --page details --print-details all` prints that chart's data as text, and `out/k30.txt` has its 200 points in 0.5 KB steps. The static (13.82 KB) and driver (1.02 KB) shared memory per block come from Launch Statistics. I computed the curve as blocks/SM = ⌊102.4 KB / (smem + 1.02 KB)⌋, capped at 7 by registers, and plotted it above. ncu's own chart data steps within ~1 KB of these points, which is why the breakpoints in the table are approximate.
+*Method:* the Occupancy section includes a chart called "Impact of Varying Shared Memory Usage Per Block". On the command line, `ncu -i ... --page details --print-details all` prints that chart's data as text, and `out/k30.txt` has its 200 points in 0.5 KB steps. The static (13.82 KB) and driver (1.02 KB) shared memory per block come from Launch Statistics. I computed the curve as blocks/SM = ⌊102.4 KB / (smem + 1.02 KB)⌋, capped at 7 by registers, where smem is the kernel's own allocation, so the x axis value is smem + 1.02 KB. Each table boundary is 102.4 KB divided by a whole number of blocks (102.4 / 7 = 14.6, 102.4 / 6 = 17.1, and so on). ncu's own chart data is sampled in 0.5 KB steps, so its breakpoints land within ~0.5 KB of these.
