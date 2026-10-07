@@ -167,47 +167,41 @@ The shape is flat on the left, where registers cap it at 58%, and then a stairca
 
 ## Parts III and IV: Narrowing and Customizing the Profile
 
-These two parts have no graded questions, but I ran both because they answer the obvious follow-up to Part I: if profiling every kernel is too slow, how do we profile only the part we care about, and how much extra data can we afford to collect on it? The short answer is that an NVTX range cuts the profile down to exactly the code we mark, and the metric set we pick decides how many times ncu reruns each kernel (8 passes for the default set, 43 for `--set full`, 19 for a single metric group).
+These parts have no graded questions, but I ran them to see what each option does.
 
-**Setup.** `code/profile_ncu_region.py` is the same Llama workload, with an NVTX range named `Annotation` around layer 0's MLP only. NVTX is a way to tag a block of code with a name (here `torch.cuda.nvtx.range_push("Annotation")` before the block and `range_pop()` after it), and `--nvtx --nvtx-include "Annotation/"` tells ncu to skip every kernel launched outside that tag. The handout adds these calls inside `modeling_llama.py`, while I patched `LlamaMLP.forward` at runtime instead (same effect, but the installed source stays stock for the other labs). `code/run_ncu_parts34.sbatch` then profiles the range three ways, each capped at 8 kernels with `-c 8`.
+**Setup.** I wrapped layer 0's MLP in an NVTX range named `Annotation`. NVTX lets you tag a block of code, and `--nvtx --nvtx-include "Annotation/"` tells ncu to only profile kernels inside that tag. I ran it three ways: default metrics, `--set full`, and just the L2 metric group.
 
-One thing to flag before the numbers: this job landed on an **NVIDIA A10G**, not the L4 from Parts I and II. Slurm labels every `gpu` node as `gpu:l4:1`, but the hardware behind that label varies (this is also why Lab 1 ran on an A10G), so the durations and hit rates below are A10G numbers.
+Note: this job ran on an **A10G**, not the L4 from Parts I and II. The cluster's GPU label doesn't guarantee which GPU you get.
 
 ![Pass counts, run times, and sections collected](images/p3_p4_passes_sections.png)
-*Passes per kernel and wall-clock time for each run, plus the sections the basic and full sets collect.*
 
-### Part III: what the NVTX range captured
+### Part III: NVTX range
 
-The range worked as intended – ncu skipped everything outside layer 0's MLP, and the first 8 kernels it captured are one prefill pass through the MLP followed by the start of the first decode step:
+ncu only profiled the MLP, as expected. It captured the prefill MLP (3 matrix multiplies plus small elementwise kernels) and then the start of the first decode step.
 
-| ID | Kernel | Duration (µs) | Model op |
+| ID | Kernel | Duration (µs) | What it is |
 |---|---|---|---|
-| 0 | `ampere_sgemm_64x32_sliced1x4_tn` | 171.55 | `gate_proj` (prefill) |
-| 1 | `vectorized_elementwise_kernel` | 3.94 | SiLU activation |
+| 0 | `ampere_sgemm_64x32_sliced1x4_tn` | 171.55 | `gate_proj` |
+| 1 | `vectorized_elementwise_kernel` | 3.94 | SiLU |
 | 2 | `ampere_sgemm_64x32_sliced1x4_tn` | 170.69 | `up_proj` |
-| 3 | `vectorized_elementwise_kernel` | 3.78 | `act(gate) * up` |
+| 3 | `vectorized_elementwise_kernel` | 3.78 | multiply |
 | 4 | `ampere_sgemm_64x32_sliced1x4_tn` | 163.62 | `down_proj` |
-| 5 | `splitKreduce_kernel` | 3.65 | sums the split-K partials for `down_proj` |
-| 6 | `gemv2T_kernel_val` | 140.70 | `gate_proj` (first decode step) |
+| 5 | `splitKreduce_kernel` | 3.65 | finishes `down_proj` |
+| 6 | `gemv2T_kernel_val` | 140.70 | `gate_proj` (decode) |
 | 7 | `vectorized_elementwise_kernel` | 3.46 | SiLU (decode) |
 
-This is the same kernel sequence as IDs 73 to 78 in Exercise II, just renumbered from 0, because ncu's IDs count only the kernels it actually profiles (so kernel IDs are not stable once a filter is added). The more interesting part is the switch at ID 6. In decode the MLP sees 1 token instead of 7, so cuBLAS swaps the matrix-matrix kernel (SGEMM) for a matrix-vector kernel (`gemv2T`), yet the duration only drops from 171 to 141 µs (~18%). I would argue this is the clearest sign that the MLP is memory-bound: the math shrank by 7x, but both kernels still have to read the same 64 MiB weight matrix, and that read is what sets the time. The L2 run below confirms this directly.
+The main takeaway: in decode the MLP handles 1 token instead of 7, but the kernel only gets ~18% faster (171 to 141 µs). That's because both kernels still have to read the same 64 MiB of weights from memory, and that's what takes the time. The MLP is memory-bound.
 
 ### Part IV: `--set full`
 
-`--set full` reran each kernel **43 times** (42 for the split-K reduce) versus **8** for the default set, and it collected **13 sections instead of 4**. Each rerun is called a pass – the GPU can only count a few hardware events at once, so ncu replays the kernel with a different group of counters each time (restoring memory in between so every replay sees the same inputs). The 9 new sections include a roofline chart, compute and memory workload analysis, scheduler and warp state statistics (this is where stall reasons live), instruction statistics, and source counters, which is what we would want when debugging one specific kernel.
+`--set full` ran each kernel **43 times** instead of **8**, and collected **13 sections instead of 4** (adding things like a roofline chart and warp stall reasons). ncu has to rerun the kernel because the GPU can only count a few things at once. So more metrics means a much slower profile, roughly 5x here.
 
-The point here is that more data is not free. For a whole workload, profiling time scales roughly with the pass count, so `--set full` costs about 5x the default set per kernel (43 / 8). It is important to note that the wall-clock times for these runs (123 s default, 71 s full, 39 s L2) do not show this – with only 8 kernels, loading the model dominates the runtime, and the first run was also the slowest because it loaded the model cold.
+### Part IV: L2 metric group
 
-### Part IV: `--metrics group:memory__l2_cache_table`
-
-Asking for a single metric group is the middle ground: it took **19 passes** and returned only the L2 table (raw `lts__t_*` counters, no formatted sections). The useful number to compute from it is the L2 hit rate, i.e the share of L2 lookups that found the data already in cache, which is `lookup_hit / (lookup_hit + lookup_miss)` counted in 32-byte sectors:
+Asking for only the L2 metrics took **19 runs per kernel**, in between the other two.
 
 ![L2 hit rate per kernel](images/p4_l2_hit_rates.png)
-*L2 sector hits, misses, and hit rate for each profiled kernel.*
 
-The three prefill GEMMs hit L2 only 9 to 10% of the time, and the decode `gemv2T` only 2.6%. To check what those misses are, I converted them to bytes: each GEMM misses about 2.10 million sectors, and 2.10M × 32 B = **64.3 MiB, which is the size of one 2048 × 8192 fp32 weight matrix (64 MiB)**. In other words, essentially every weight byte misses L2 and is read from DRAM exactly once. This is the measured version of the "weights stream through once with low reuse" explanation in Q4 and Q5. The small elementwise kernels are the opposite case (40 to 74% hit rate), because they read activations the previous kernel just wrote, which are still sitting in L2.
+The matrix multiply kernels found their data in L2 only 2 to 10% of the time. Their misses add up to 64.3 MiB, which is exactly the size of the weight matrix. So basically every weight is read from main memory once and never reused, which backs up my Q4 and Q5 answers. The small elementwise kernels hit L2 40 to 74% of the time, because they read data the previous kernel just wrote.
 
-In closing, the three runs line up with the three questions we would ask in practice: NVTX decides *which* kernels we pay to profile, the metric set decides *how much* we pay per kernel, and a targeted metric group can answer a specific question (here, whether the weights get any cache reuse) at well under half the cost of `--set full`. The one caveat is that these numbers come from an A10G, so they show the same pattern as the L4 results above but should not be compared to them number for number.
-
-*Method:* durations are `gpu__time_duration.sum` from `profile_ncu_region.ncu-rep`, hit and miss counts are `lts__t_sectors_lookup_hit.sum` and `lts__t_sectors_lookup_miss.sum` from `ncu -i profile_ncu_region_L2.ncu-rep --page details --print-details all`, and pass counts and run times are from the job log.
+**In short:** NVTX picks *which* kernels you profile, and the metric set picks *how much* data you collect on each one, at the cost of more reruns.
