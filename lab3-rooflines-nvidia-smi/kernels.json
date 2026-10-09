@@ -1,0 +1,34 @@
+[
+  {
+    "name": "GEMM 4096x4096x4096",
+    "flops": 137438953472,
+    "bytes": 100663296,
+    "time_s": 0.0017905999999999998,
+    "arithmetic_intensity": 1365.3333333333333,
+    "throughput": 76755810048028.6
+  },
+  {
+    "name": "Conv2d 3x3",
+    "flops": 7398752256,
+    "bytes": 25763840,
+    "time_s": 0.00021549999999999998,
+    "arithmetic_intensity": 287.1758346581876,
+    "throughput": 34332957104408.355
+  },
+  {
+    "name": "GEMM A 8192x8192x4096",
+    "flops": 549755813888,
+    "bytes": 268435456,
+    "time_s": 0.0114139,
+    "arithmetic_intensity": 2048.0,
+    "throughput": 48165466132347.41
+  },
+  {
+    "name": "GEMM B 1x8192x4096",
+    "flops": 67108864,
+    "bytes": 67133440,
+    "time_s": 0.0002748,
+    "arithmetic_intensity": 0.999633923123856,
+    "throughput": 244209839883.55167
+  }
+]
