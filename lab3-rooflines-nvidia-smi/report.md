@@ -2,6 +2,66 @@
 
 CS2470 Advanced Computer Architecture, Fall 2026
 
+This lab asks two questions about running AI models on a GPU. First, what limits how fast a piece of GPU code runs: the math hardware, or the memory feeding it? Second, how much power and energy does running a language model actually use? The first half answers question one with a **roofline model**. The second half answers question two by logging power with **`nvidia-smi`** while real models generate text.
+
+If you already know what arithmetic intensity, GEMMs, and prefill vs decode are, skip to [Setup](#setup).
+
+## Background (start here if you're new)
+
+### What a GPU is doing
+
+A GPU has two resources that matter here:
+
+- **Compute:** thousands of small math units that do multiply-adds. Speed is measured in **FLOP/s** (floating-point operations per second). 1 TFLOP/s = 10^12 FLOP/s.
+- **Memory bandwidth:** how fast data moves between the GPU's main memory (DRAM, the "23 GB" on the spec sheet) and those math units. Measured in **GB/s**.
+
+Every computation needs both: data has to arrive before it can be multiplied. Whichever one runs out first sets the speed. The L4 GPU used in this lab can do 121 TFLOP/s of fp16 math, but its memory only delivers 300 GB/s.
+
+### Arithmetic intensity
+
+**Arithmetic intensity (AI)** = FLOPs performed / bytes moved from memory. It measures how much math a program does for each byte it reads.
+
+An analogy: a kitchen with very fast cooks (compute) and a slow delivery truck bringing ingredients (memory). A recipe that does a lot of chopping per ingredient (high AI) keeps the cooks busy. A recipe where each ingredient gets one quick touch (low AI) leaves the cooks waiting for the truck.
+
+### The roofline model
+
+A roofline plot puts arithmetic intensity on the x-axis and achieved performance (FLOP/s) on the y-axis. The "roof" is the best performance the hardware could possibly reach at each AI:
+
+![How to read a roofline](images/roofline_explained.png)
+
+- **Left side (sloped roof):** low AI. Performance is capped at bandwidth × AI. These programs are **memory-bound**: buying more math units wouldn't help.
+- **Right side (flat roof):** high AI. Performance is capped at peak FLOP/s. These programs are **compute-bound**.
+- **Ridge point:** where the two meet, at AI = peak FLOP/s / bandwidth. For the L4 that is 121 TFLOP/s / 300 GB/s ≈ 403 FLOP/Byte.
+
+To place a real program on the plot, you compute its AI by hand and measure its runtime. The vertical gap between the dot and the roof shows how much performance is being left on the table. The horizontal position tells you which resource to blame.
+
+### GEMMs and convolutions
+
+- **GEMM** (general matrix multiply) is `C = A × B`. Multiplying an M×K matrix by a K×N matrix takes 2·M·N·K FLOPs (each output element needs K multiplies and K adds). Almost all the math in a transformer language model is GEMMs: each layer multiplies the token activations by large weight matrices.
+- **Convolution** is the core operation of image models (CNNs). It slides a small filter over an image. Under the hood GPUs run it as a GEMM in disguise ("implicit GEMM").
+
+### Prefill vs decode (how LLMs generate text)
+
+A language model generates text in two phases:
+
+1. **Prefill:** the model reads the whole prompt at once. With a 1,000-token prompt, every weight matrix is multiplied against 1,000 rows of activations in one go. Each weight loaded from memory gets reused 1,000 times, so AI is high and prefill is **compute-bound**.
+2. **Decode:** the model then generates one new token at a time. Each step multiplies every weight matrix against a single row. Each weight is loaded from memory and used once, so AI is about 1 and decode is **memory-bound**. For an 8B-parameter model in fp16, every single token requires streaming ~16 GB of weights through the memory system.
+
+**Batching** means generating for many prompts at once. During decode with batch size 100, each weight read serves 100 rows instead of 1, which raises AI about 100x. That's why batching is the main trick for making LLM serving efficient, and Exercise IV measures the effect directly.
+
+### Power vs energy
+
+- **Power** (watts, W) is the rate of energy use at a given moment. `nvidia-smi` reports it.
+- **Energy** (joules, J) is the total used over time: energy = power × time. A GPU drawing 70 W for 10 s uses 700 J.
+- **TDP / power limit** is the maximum power the GPU is allowed to draw (72 W for the L4, which is small for a data-center GPU, compared with 700 W for an H100). If a workload would exceed it, the GPU lowers its clock speed to stay under, which makes it slower.
+- **P-states** are power modes. P0 is full speed, P8 is deep idle with clocks parked.
+
+For energy efficiency, the useful number is usually **energy per unit of work** (here, joules per generated token), not raw power.
+
+### How the lab is run
+
+The course cluster uses **Slurm**, a job scheduler. You don't run heavy code on the login machine. Instead you either request an interactive GPU session (`srun ... --pty bash`) or submit a script to run in the background (`sbatch script.sbatch`). The output of a batch job goes to a log file. **PyTorch Profiler** records how long each GPU operation takes. **`nvidia-smi`** is NVIDIA's command-line tool for reading GPU status: power, temperature, memory, running processes.
+
 ## Setup
 
 - **Hardware:** NVIDIA L4 (Ada, 23,034 MiB, 72 W power limit) on nodes `gpu-dy-gpu-cr-1` and `gpu-dy-gpu-cr-7` of the HUIT academic cluster
@@ -59,20 +119,22 @@ ax.plot([x_intersection, max_x], [peak_flops, peak_flops], color=color)     # co
 
 The L4's ridge is high (403 FLOP/B) because it has very little bandwidth for its compute. A kernel needs a lot of reuse per byte before the L4 stops being memory-bound.
 
+**In plain terms:** on an L4, a program has to do about 400 math operations for every byte it reads before the math units become the bottleneck. Anything less, and the GPU spends its time waiting on memory.
+
 ## Part II: Adding Kernels to the Roofline
 
-Each kernel needs two numbers. AI = FLOPs / bytes, and throughput = FLOPs / time. FLOPs and bytes are analytic. Time is measured.
+A **kernel** is one function that runs on the GPU (one matrix multiply, for example). To put a kernel on the roofline it needs two numbers: its AI (x-axis) and its achieved FLOP/s (y-axis). AI = FLOPs / bytes, and throughput = FLOPs / time. FLOPs and bytes can be worked out on paper from the matrix sizes. Time has to be measured.
 
 For a GEMM `(M×K) @ (K×N)`:
 
 ```
-FLOPs = 2·M·N·K                       (one multiply + one add per MAC)
+FLOPs = 2·M·N·K                       (one multiply + one add per multiply-accumulate)
 Bytes = 2·(M·K + K·N + M·N)           (read A, read B, write C, once each, fp16)
 ```
 
-For the 4096³ GEMM: 1.374e11 FLOPs, 1.007e8 bytes, so **AI = 1,365 FLOP/B**.
+"4096³" means M = K = N = 4096, i.e two 4096×4096 matrices. For this GEMM: 1.374e11 FLOPs, 1.007e8 bytes, so **AI = 1,365 FLOP/B**.
 
-**Profiling.** I wrapped the GEMM in PyTorch Profiler, ran 10 warmup iterations, then profiled 20 and divided the GPU kernel time by 20:
+**Profiling.** I wrapped the GEMM in PyTorch Profiler, ran 10 warmup iterations, then profiled 20 and divided the GPU kernel time by 20. Warmup matters because the first few calls include one-time costs (loading libraries, picking the fastest kernel) that would make the timing look worse than steady state. `torch.cuda.synchronize()` makes the CPU wait for the GPU to finish, since GPU work is launched asynchronously and would otherwise still be running when the timer stops.
 
 ```py
 with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
@@ -111,7 +173,7 @@ What the plot shows:
 
 - **GEMM (AI 1,365)** is right of every ridge, so it is compute-bound on all three GPUs. On the L4 it reaches 63% of the compute roof.
 - **Conv (AI 287)** sits left of the L4 ridge (403) but right of the A100 (153) and H100 (295) ridges. The same kernel is memory-bound on the L4 and compute-bound on the A100 and H100. That's the clearest takeaway of the plot: whether a kernel is "memory-bound" depends on the hardware, not just the kernel.
-- **Conv efficiency** is only 40% of its L4 roof (86 TFLOP/s attainable at AI 287). Part of that is layout conversion. The profiler shows the actual convolution kernel (`sm86_xmma_fprop_implicit_gemm_f16f16_f16f32_f32_nhwc...`) is only 52% of the GPU time. The rest is converting the input from PyTorch's default NCHW layout to the NHWC layout the kernel wants. Using `channels_last` tensors would remove that.
+- **Conv efficiency** is only 40% of its L4 roof (86 TFLOP/s attainable at AI 287). Part of that is layout conversion. The profiler shows the actual convolution kernel (`sm86_xmma_fprop_implicit_gemm_f16f16_f16f32_f32_nhwc...`) is only 52% of the GPU time. The rest is converting the input from PyTorch's default NCHW layout (all of channel 1, then all of channel 2, and so on) to the NHWC layout the kernel wants (all channels of pixel 1, then pixel 2). Same data, different order in memory. Using `channels_last` tensors would remove that.
 
 ## Exercise II: Compute-Bound vs Memory-Bound Kernels
 
@@ -121,6 +183,8 @@ What the plot shows:
 | GEMM B | 1, 8192, 4096 | 1.0 | 0.275 ms | 0.24 TFLOP/s | **memory** | 81% |
 
 ![GEMM A and GEMM B on the L4 roofline](images/ex2_gemm_ab.png)
+
+**In plain terms:** GEMM A is a big multiply where every number loaded gets reused thousands of times, so the math units are the bottleneck. GEMM B multiplies a single row by a big matrix, so every number loaded is used once and the GPU mostly waits on memory. Same operation, very different behavior, purely because of the shape.
 
 **GEMM A is compute-bound** (AI 2,048, about 5x past the ridge). Every weight byte gets reused across 8,192 rows.
 
@@ -152,6 +216,8 @@ Reading the output for the idle GPU:
 
 ## Part IV: Capturing Power During Workload Execution
 
+The idea: start `nvidia-smi` logging power to a file in the background (a **subprocess** is a second program launched from Python that runs alongside it), run the model, then stop the logger and line up the power readings with when the model was running.
+
 `code/profile_power_workload.py` follows the template: launch `nvidia-smi --query-gpu=timestamp,power.draw,... -lms 1 > log.csv` as a subprocess, sleep 5 s, run 5 × `generate(max_new_tokens=50)`, sleep 5 s, stop the subprocess. I made three changes:
 
 1. One warmup `generate()` **before** logging starts, so CUDA init and kernel autotuning aren't in the measurement
@@ -174,7 +240,7 @@ Shape of the trace: ~28 W before the run, a ~1 s ramp as clocks come up, then th
 
 ![Llama-3.1-8B power trace](images/ex3_llama8b_power.jpg)
 
-Energy is the integral of power over the workload window: `E = Σ P_i · Δt_i`. That matches average power × time (70.1 W × 15.61 s = 1,094 J).
+Energy is the integral of power over the workload window: `E = Σ P_i · Δt_i`, i.e add up each power reading times the length of time it covered. Graphically, it's the area under the power curve between the start and end lines. That matches average power × time (70.1 W × 15.61 s = 1,094 J).
 
 | Model | Time | Avg power | Idle | Energy | Energy above idle | Per `generate()` | Per token |
 |---|---|---|---|---|---|---|---|
@@ -213,3 +279,30 @@ What's going on: 5 × 50 = 250 tokens in 15.6 s is 62 ms per token. Each decode 
 - Decode is memory-bound and prefill is compute-bound. GEMM B (M = 1) hits 81% of DRAM bandwidth, and full-model decode for Llama-8B hits 86%.
 - Batching is the biggest energy lever here: 100x batch cut energy per token by ~70x at nearly constant power.
 - "Idle" needs a definition. 16 to 19 W in P8 with nothing loaded, ~28 W with a model resident right after work.
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **AI (arithmetic intensity)** | FLOPs per byte moved from memory. High AI = lots of reuse per byte |
+| **Bandwidth** | Rate data moves between GPU memory and the math units (GB/s) |
+| **Batch size** | Number of independent prompts processed together |
+| **Compute-bound** | Speed is limited by the math units (right of the ridge) |
+| **Decode** | Generating output tokens one at a time. Memory-bound at small batch |
+| **DRAM** | The GPU's main memory (23 GB on the L4) |
+| **Energy (J)** | Power × time. What you pay for |
+| **FLOP** | One floating-point add or multiply |
+| **fp16** | 16-bit floating point numbers, 2 bytes each |
+| **GEMM** | General matrix multiply, C = A × B |
+| **Kernel** | A single function launched on the GPU |
+| **Memory-bound** | Speed is limited by memory bandwidth (left of the ridge) |
+| **nvidia-smi** | NVIDIA's command-line GPU monitoring tool |
+| **P-state** | GPU power mode. P0 = full speed, P8 = deep idle |
+| **Power (W)** | Instantaneous rate of energy use |
+| **Prefill** | Processing the whole prompt in one pass. Compute-bound |
+| **Ridge point** | AI where a roofline turns flat. Peak FLOP/s / bandwidth |
+| **Roofline** | Plot of attainable FLOP/s vs AI for a given chip |
+| **Slurm, srun, sbatch** | The cluster's job scheduler and its interactive / batch job commands |
+| **Tensor Cores** | Specialized GPU units for small matrix multiplies. The 121 TFLOP/s fp16 peak comes from these |
+| **TDP / power limit** | Max power the GPU is allowed to draw. The L4 throttles its clocks to stay under 72 W |
+| **Token** | A word or word-piece. LLMs generate one token per decode step |
