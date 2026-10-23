@@ -2,26 +2,22 @@
 
 CS2470 Advanced Computer Architecture, Fall 2026
 
-This lab asks two questions about running AI models on a GPU. First, what limits how fast a piece of GPU code runs: the math hardware, or the memory feeding it? Second, how much power and energy does running a language model actually use? The first half answers question one with a **roofline model**. The second half answers question two by logging power with **`nvidia-smi`** while real models generate text.
+This lab asks two questions about running AI models on a GPU. First, what limits how fast a piece of GPU code runs: the math hardware, or the memory feeding it? We use a roofline model to answer this in Q1. Second, how much power and energy does running an LLM actually use? We answer this Q2 by logging power with **`nvidia-smi`** while serving the model.
 
-If you already know what arithmetic intensity, GEMMs, and prefill vs decode are, skip to [Setup](#setup).
-
-## Background (start here if you're new)
+## Background 
 
 ### What a GPU is doing
 
 A GPU has two resources that matter here:
 
-- **Compute:** thousands of small math units that do multiply-adds. Speed is measured in **FLOP/s** (floating-point operations per second). 1 TFLOP/s = 10^12 FLOP/s.
-- **Memory bandwidth:** how fast data moves between the GPU's main memory (DRAM, the "23 GB" on the spec sheet) and those math units. Measured in **GB/s**.
+- **Compute:** Units doing matrix multiple multiplication. Speed is measured in **FLOP/s**. 1 TFLOP/s = 10^12 FLOP/s.
+- **Memory bandwidth:** How fast data moves between the GPU's main memory (DRAM) and compute units. Measured in **GB/s**.
 
 Every computation needs both: data has to arrive before it can be multiplied. Whichever one runs out first sets the speed. The L4 GPU used in this lab can do 121 TFLOP/s of fp16 math, but its memory only delivers 300 GB/s.
 
 ### Arithmetic intensity
 
-**Arithmetic intensity (AI)** = FLOPs performed / bytes moved from memory. It measures how much math a program does for each byte it reads.
-
-An analogy: a kitchen with very fast cooks (compute) and a slow delivery truck bringing ingredients (memory). A recipe that does a lot of chopping per ingredient (high AI) keeps the cooks busy. A recipe where each ingredient gets one quick touch (low AI) leaves the cooks waiting for the truck.
+**Arithmetic intensity (AI)** = FLOPs performed / bytes moved from memory. 
 
 ### The roofline model
 
@@ -29,11 +25,9 @@ A roofline plot puts arithmetic intensity on the x-axis and achieved performance
 
 ![How to read a roofline](images/roofline_explained.png)
 
-- **Left side (sloped roof):** low AI. Performance is capped at bandwidth × AI. These programs are **memory-bound**: buying more math units wouldn't help.
+- **Left side (sloped roof):** low AI. Performance is capped at bandwidth × AI. These programs are **memory-bound**: more compute wouldn't help.
 - **Right side (flat roof):** high AI. Performance is capped at peak FLOP/s. These programs are **compute-bound**.
-- **Ridge point:** where the two meet, at AI = peak FLOP/s / bandwidth. For the L4 that is 121 TFLOP/s / 300 GB/s ≈ 403 FLOP/Byte.
-
-To place a real program on the plot, you compute its AI by hand and measure its runtime. The vertical gap between the dot and the roof shows how much performance is being left on the table. The horizontal position tells you which resource to blame.
+- **Ridge point:** the transition point, at AI = peak FLOP/s / bandwidth. For L4 that is 121 TFLOP/s / 300 GB/s ≈ 403 FLOP/Byte.
 
 ### GEMMs and convolutions
 
@@ -42,10 +36,10 @@ To place a real program on the plot, you compute its AI by hand and measure its 
 
 ### Prefill vs decode (how LLMs generate text)
 
-A language model generates text in two phases:
+An LLM generates text in 2 phases:
 
-1. **Prefill:** the model reads the whole prompt at once. With a 1,000-token prompt, every weight matrix is multiplied against 1,000 rows of activations in one go. Each weight loaded from memory gets reused 1,000 times, so AI is high and prefill is **compute-bound**.
-2. **Decode:** the model then generates one new token at a time. Each step multiplies every weight matrix against a single row. Each weight is loaded from memory and used once, so AI is about 1 and decode is **memory-bound**. For an 8B-parameter model in fp16, every single token requires streaming ~16 GB of weights through the memory system.
+1. **Prefill:** the model reads the whole prompt at once. With a 1,000-token prompt, every weight matrix is multiplied against 1,000 rows of activations. Each weight loaded from memory gets reused 1,000 times, so AI is high and prefill is **compute-bound**.
+2. **Decode:** the model then generates 1 new token at a time. Each step multiplies every weight matrix against a single row. Each weight is loaded from memory and used once, so AI is about 1 and decode is **memory-bound**. For an 8B-parameter model in fp16, every single token requires streaming ~16 GB of weights through the memory system.
 
 **Batching** means generating for many prompts at once. During decode with batch size 100, each weight read serves 100 rows instead of 1, which raises AI about 100x. That's why batching is the main trick for making LLM serving efficient, and Exercise IV measures the effect directly.
 
