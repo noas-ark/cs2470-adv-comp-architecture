@@ -42,10 +42,10 @@ The `results/` folder holds `COMPUTE_REPORT.csv`, `BANDWIDTH_REPORT.csv`, `DETAI
 
 See`scalesim/single_layer_sim.py`.
 
-- **What is the name of the function used to get the operand matrices for the filter? **`get_filter_matrix()` on the operand matrix object, called in `run()` as `_, filter_op_mat = self.op_mat_obj.get_filter_matrix()`.
-- **What is the default word size? **\
+- **What is the name of the function used to get the operand matrices for the filter?** `get_filter_matrix()` on the operand matrix object, called in `run()` as `_, filter_op_mat = self.op_mat_obj.get_filter_matrix()`.
+- **What is the default word size?**\
 1 byte (`word_size = 1`, with a comment that it could move into the config file).
-- **What is the formula used to calculate BW for DRAM access? **\
+- **What is the formula used to calculate BW for DRAM access?**\
 Words moved divided by the operand's active DRAM cycles, for example `avg_ifmap_dram_bw = ifmap_dram_reads / (ifmap_dram_stop_cycle - ifmap_dram_start_cycle + 1)`, and the same for filter reads and ofmap writes.
 
 ## Exercise I: google.cfg vs scale.cfg
