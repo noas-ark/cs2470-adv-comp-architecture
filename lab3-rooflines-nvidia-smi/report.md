@@ -117,6 +117,10 @@ ax.plot(x_mem, peak_memory_bw * x_mem, color=color, label=name)            # mem
 ax.plot([x_intersection, max_x], [peak_flops, peak_flops], color=color)     # compute roof
 ```
 
+Running the completed template gives the L4 roofline:
+
+![Part I output: L4 roofline](images/p1_roofline_l4.png)
+
 The L4's ridge is high (403 FLOP/B) because it has very little bandwidth for its compute. A kernel needs a lot of reuse per byte before the L4 stops being memory-bound.
 
 **In plain terms:** on an L4, a program has to do about 400 math operations for every byte it reads before the math units become the bottleneck. Anything less, and the GPU spends its time waiting on memory.
