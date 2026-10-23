@@ -4,6 +4,8 @@
 
 Lab instructions: [Simulators Part I, ScaleSim (Google Doc)](https://docs.google.com/document/d/1JAuO83rMpbEedpgGhyGss4F845B7vBj17Onmb2BT8qY/edit?usp=sharing)
 
+Code and data: [github.com/noas-ark/cs2470-adv-comp-architecture/tree/main/lab4-scalesim](https://github.com/noas-ark/cs2470-adv-comp-architecture/tree/main/lab4-scalesim)
+
 ## Part I: Running the simulator
 
 The base run takes 116,210 cycles (clock ticks the chip needs to finish the run) at 91.68% utilization, with no stalls (stall = cycles the array waited on memory to deliver data mid-run). Simulates 1 AlexNet layer on a 32x32 grid of MAC units.
