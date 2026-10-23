@@ -41,7 +41,7 @@ An LLM generates text in 2 phases:
 1. **Prefill:** the model reads the whole prompt at once. With a 1,000-token prompt, every weight matrix is multiplied against 1,000 rows of activations. Each weight loaded from memory gets reused 1,000 times, so AI is high and prefill is **compute-bound**.
 2. **Decode:** the model then generates 1 new token at a time. Each step multiplies every weight matrix against a single row. Each weight is loaded from memory and used once, so AI is about 1 and decode is **memory-bound**. For an 8B-parameter model in fp16, every single token requires streaming ~16 GB of weights through the memory system.
 
-**Batching** means generating for many prompts at once. During decode with batch size 100, each weight read serves 100 rows instead of 1, which raises AI about 100x. That's why batching is the main trick for making LLM serving efficient, and Exercise IV measures the effect directly.
+**Batching** = generating for many prompts at once. During decode with batch size 100, each weight read serves 100 rows instead of 1, which raises AI about 100x. That's why batching is the main trick for making LLM serving efficient, and Exercise IV measures the effect directly.
 
 ### Power vs energy
 
@@ -52,21 +52,20 @@ An LLM generates text in 2 phases:
 
 For energy efficiency, the useful number is usually **energy per unit of work** (here, joules per generated token), not raw power.
 
-### How the lab is run
+### Lab3 Structure 
 
-The course cluster uses **Slurm**, a job scheduler. You don't run heavy code on the login machine. Instead you either request an interactive GPU session (`srun ... --pty bash`) or submit a script to run in the background (`sbatch script.sbatch`). The output of a batch job goes to a log file. **PyTorch Profiler** records how long each GPU operation takes. **`nvidia-smi`** is NVIDIA's command-line tool for reading GPU status: power, temperature, memory, running processes.
+We use **Slurm** for job scheduling. **PyTorch Profiler** records how long each GPU operation takes. **`nvidia-smi`** is NVIDIA's command-line tool for reading GPU status: power, temperature, memory, running processes.
 
 ## Setup
 
 - **Hardware:** NVIDIA L4 (Ada, 23,034 MiB, 72 W power limit) on nodes `gpu-dy-gpu-cr-1` and `gpu-dy-gpu-cr-7` of the HUIT academic cluster
 - **Software:** driver 580.126.20, CUDA 13.0, the `cs2470_env` conda env from Lab 0
 - **Workspace:** `~/workspace/ml_workloads_part_3`
-- **How I ran it:** batch jobs instead of an interactive `srun`, because the OOD web shell dropped my interactive session mid-run. `code/run_lab3.sbatch` runs every part in order (job 1700). `code/run_kernels.sbatch` reruns only Part II and the roofline plots (job 1701, see the note in Part II).
 - **Precision:** everything is fp16. FLOP counts and byte counts below assume 2 bytes per element.
 
 | File | What it does |
 |---|---|
-| `code/plot_roofline.py` | Part I template with the TODOs filled in, plus Exercise I and II plots |
+| `code/plot_roofline.py` | Script that draws roofline charts in the report |
 | `code/profile_kernel.py` | Part II: times the GEMM and conv kernels with PyTorch Profiler, writes `kernels.json` |
 | `code/profile_power_workload.py` | Part IV: logs `nvidia-smi` in a subprocess while an LLM runs `generate()` |
 | `code/plot_power.py` | Exercises III and IV: power over time, idle and TDP lines, energy table |
