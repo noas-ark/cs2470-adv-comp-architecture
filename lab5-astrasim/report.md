@@ -8,12 +8,19 @@ Code and data: [github.com/noas-ark/cs2470-adv-comp-architecture/tree/main/lab5-
 
 ## Setup
 
-- **Simulator:** [astra-sim/astra-sim](https://github.com/astra-sim/astra-sim) at the revision the lab pins, `4ce9ecfe746a3ee5fe47559a11d91644d641fa7f`, built from source with submodules
-- **Backend:** analytical, congestion aware (`AstraSim_Analytical_Congestion_Aware`). CPU only, no GPU involved, even though the thing being modeled is distributed GPU training
+- **Cluster:** HUIT academic cluster, interactive CPU session on node `general-dy-general-cr-17`, requested with `srun -p general -c 8 --mem=16G --pty bash`. CPU only, no GPU involved, even though the thing being modeled is distributed GPU training
+- **Simulator:** [astra-sim/astra-sim](https://github.com/astra-sim/astra-sim) at the revision the lab pins, `4ce9ecfe746a3ee5fe47559a11d91644d641fa7f`, built from source with submodules inside the shared course container (`source ~/169291/astra-sim/activate.sh`, then `astra-sim-shell`)
+- **Backend:** analytical, congestion aware (`AstraSim_Analytical_Congestion_Aware`)
 - **Inputs:** the stock files shipped in `examples/`. The only thing I edit is a copy of the network YAML, which is what Exercise II sweeps
 - **Driver:** `code/run_sweeps.py` runs all 24 simulations and writes `results.csv`. `code/plot_sweeps.py` draws the two figures. Raw per-run logs are in `runs/`
-- **Units:** the analytical backend uses 1 tick = 1 ns, so microseconds = ticks / 1000. This is simulated time. Host elapsed time is a separate thing (the whole 16 NPU example finishes in about 0.6 s of real time)
+- **Units:** the analytical backend uses 1 tick = 1 ns, so microseconds = ticks / 1000. This is simulated time. Host elapsed time is a separate thing (the whole 16 NPU example finishes in well under a second of real time)
 - **Which number I report:** Astra-Sim prints a Wall time and a Comm time per NPU. Per the lab I take the **max across NPUs**, never the sum. In practice every NPU reported the identical value in all 24 runs, so max and min coincide here
+
+Two notes from actually doing this:
+
+**The results do not depend on the machine.** I ran the full sweep twice: once on a separate machine with its own build of the same pinned commit, and once in the course container on the cluster. All 41 runs (24 for the exercises, 17 probes) returned identical tick counts, down to the digit; the cluster side is recorded in `cluster-verification.csv`. The analytical backend has no timing-dependent behaviour, so what comes out is a function of the inputs and the revision, not of the host. Worth knowing before spending a compute allocation on a re-run.
+
+**Note:** inside the container `$HOME` is `/home/nos673`, while the real home is `/shared/home/nos673`. Anything built from `$HOME` fails with "No such file or directory" even though the same path works outside. I used absolute `/shared/home/...` paths instead. The container preserves your working directory, so `pwd` is the quick way to find out where you actually are.
 
 ## Part II: Running the simulator
 
@@ -88,6 +95,8 @@ The measured ratios say the same thing: 151.016 / 64.744 = 2.3325 against a pred
 
 **Why.** Ring All-Gather takes N-1 steps. On each step every rank passes one 1 MiB block to its neighbor, so the amount crossing any single link per step is fixed no matter how big the ring is. Only the number of steps grows. Checking the per step cost against first principles: 1 MiB at 50 GB/s is 1,048,576 / 50e9 = 20.97 us, plus the 500 ns link latency gives 21.47 us. Measured is 21.57 us, so roughly 0.1 us per step is chunking and endpoint overhead that the simple model leaves out.
 
+*Method:* the per step figure is just comm time divided by N-1. The slope is the difference between consecutive points divided by the difference in step count, computed in `code/plot_sweeps.py`; both intervals agreeing to three decimals is what makes the straight line claim safe rather than eyeballed.
+
 **The part worth saying out loud:** time grows with N but the data gathered also grows with N, so cost per byte delivered is nearly flat. That is the sense in which ring All-Gather is bandwidth efficient. What it is not is latency efficient, because N-1 sequential steps means the ring gets deeper every time you add a GPU, and each step is a dependency, not something you can parallelize away. A 16 NPU ring spends 323 us moving 1 MiB per rank. That is the argument for hierarchical or tree collectives once N gets large, and it is why real multi node systems do not run one flat ring across every GPU.
 
 ## Exercise II: Bandwidth's impact on different collectives
@@ -127,6 +136,8 @@ All 20 points fit `comm = A / BW + B` almost perfectly, with a worst case residu
 | All-to-All | 3,449 | 3.90x | 105.38 |
 | All-Reduce | 1,740 | 1.97x | 53.08 |
 | Reduce-Scatter | 885 | 1.00x | 26.74 |
+
+*Method:* A and B are a least squares fit of comm time against 1/BW over all 5 points per collective, not a two point solve, so a bad fit would show up as a large residual. It does not: the worst point in the whole table is off by 0.05 us.
 
 The A column is a data volume ranking, and for three of the four it lands on the textbook number exactly. With N = 8:
 
