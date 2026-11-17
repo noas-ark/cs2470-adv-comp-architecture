@@ -1,0 +1,3 @@
+__pycache__/
+# Astra-Sim writes a log/ dir into whatever directory it is launched from
+log/

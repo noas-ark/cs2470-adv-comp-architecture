@@ -7,3 +7,4 @@ reports for cs2470 labs
 - [Lab 2: GPU Profiling Part II (Nsight Compute)](lab2-ncu-profiling/report.md)
 - [Lab 3: ML Workloads Part III (Rooflines + NVIDIA-SMI)](lab3-rooflines-nvidia-smi/report-lab3.pdf)
 - [Lab 4: Simulators Part I (ScaleSim)](lab4-scalesim/report.md)
+- [Lab 5: Simulators Part II (Astra-Sim)](lab5-astrasim/report.md)
