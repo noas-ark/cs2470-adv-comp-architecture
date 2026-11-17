@@ -69,3 +69,8 @@ def line_panel(ax, series, xlabel, ylabel, xticks=None, logy=False, marker="o"):
 def header(fig, title, subtitle):
     fig.text(0.02, 0.965, title, fontsize=15, fontweight="bold", color=INK, va="top")
     fig.text(0.02, 0.925, subtitle, fontsize=10, color=MUTED, va="top")
+
+
+def footer(fig, text):
+    """Provenance line along the bottom of the figure, lab 3 convention."""
+    fig.text(0.012, 0.015, text, fontsize=7, color=MUTED, va="bottom")

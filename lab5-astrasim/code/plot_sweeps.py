@@ -7,7 +7,7 @@ import csv
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from style import AMBER, CYAN, GRID, INK, MUTED, PINK, VIOLET, header, line_panel, rounded_bars
+from style import AMBER, CYAN, GRID, INK, MUTED, PINK, VIOLET, footer, header, line_panel, rounded_bars
 
 HERE = Path(__file__).resolve().parent
 LAB = HERE.parent
@@ -19,6 +19,10 @@ NICE = {"all_gather": "All-Gather", "all_reduce": "All-Reduce",
         "all_to_all": "All-to-All", "reduce_scatter": "Reduce-Scatter"}
 
 rows = list(csv.DictReader((LAB / "results.csv").open()))
+
+# Provenance line carried on every figure, as in Lab 3.
+PROV = ("Astra-Sim analytical backend (congestion aware) at commit 4ce9ecf. Measured in the shared course container "
+        "on the HUIT academic cluster, node general-dy-general-cr-17, slurm job 11626. Raw output: runs/cluster-session.log.")
 
 
 def fit(pts):
@@ -58,9 +62,10 @@ for n, t in ex1:
     axs[1].annotate(f"{t:,.1f}", (n - 1, t), textcoords="offset points",
                     xytext=(6, -10), fontsize=8, color=INK)
 
-header(fig, "Exercise I: All-Gather scaling on a Ring",
-       "1 MiB per rank, 50 GB/s links, 500 ns latency, Ring_4chunks. Max Comm time across NPUs.")
-fig.tight_layout(rect=(0, 0, 1, 0.87), w_pad=2.5)
+header(fig, "Ring All-Gather time grows with N-1, not with N",
+       "All-Gather, Ring topology, 1 MiB per rank, 50 GB/s links, 500 ns latency, Ring_4chunks. Max Comm time across NPUs.")
+footer(fig, PROV)
+fig.tight_layout(rect=(0, 0.04, 1, 0.87), w_pad=2.5)
 fig.savefig(IMG / "exI_npu_scaling.png", dpi=150)
 plt.close(fig)
 
@@ -99,9 +104,11 @@ axs[1].set_title("Same curves normalised to each collective's 100 GB/s point",
 axs[1].set_ylim(0, 105)
 axs[1].legend(frameon=False, labelcolor=MUTED, fontsize=8.5)
 
-header(fig, "Exercise II: bandwidth vs collective communication time",
-       "8 NPUs, Switch topology, 936.25 ns latency, HGX-H100-validated system, 1 MiB traces. 20 runs.")
-fig.tight_layout(rect=(0, 0, 1, 0.87), w_pad=2.5)
+header(fig, "Only All-Gather really benefits from more bandwidth",
+       "8 NPUs, Switch topology, 936.25 ns latency, HGX-H100-validated system, 1 MiB traces. 20 runs. "
+       "All-Gather sheds 65%, the other three about 22%.")
+footer(fig, PROV)
+fig.tight_layout(rect=(0, 0.04, 1, 0.87), w_pad=2.5)
 fig.savefig(IMG / "exII_bandwidth.png", dpi=150)
 plt.close(fig)
 

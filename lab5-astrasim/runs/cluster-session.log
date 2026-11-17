@@ -1,0 +1,186 @@
+# Lab 5 (Astra-Sim) cluster session log
+# host: general-dy-general-cr-17   slurm job: 11626
+# date (UTC): 2026-11-17T03:03:04Z
+# container: ~/169291/astra-sim/astra-sim.sif (shared course install)
+# astra-sim commit: 4ce9ecfe746a3ee5fe47559a11d91644d641fa7f
+# Full simulator output is kept for Part II. For the 40 sweep and probe runs the
+# log records the command plus every NPU-reported Comm time (sort -u) and the NPU count,
+# which is the whole of the meaningful output; the rest is per-NPU boilerplate.
+
+=== PART II: stock Ring All-Gather, 16 NPUs, full simulator output ===
+$ AstraSim_Analytical_Congestion_Aware --workload=all_gather/16npus_1MB --system=Ring_4chunks.json --network=Ring_16npus.yml
+[2026-11-17 03:03:04.180] [system::topology::RingTopology] [info] ring of node 0, id: 0 dimension: local total nodes in ring: 16 index in ring: 0 offset: 1 total nodes in ring: 16
+[2026-11-17 03:03:04.180] [system::topology::RingTopology] [info] ring of node 0, id: 0 dimension: local total nodes in ring: 16 index in ring: 0 offset: 1 total nodes in ring: 16
+[2026-11-17 03:03:04.180] [system::topology::RingTopology] [info] ring of node 0, id: 0 dimension: local total nodes in ring: 16 index in ring: 0 offset: 1 total nodes in ring: 16
+[2026-11-17 03:03:04.180] [system::topology::RingTopology] [info] ring of node 0, id: 0 dimension: local total nodes in ring: 16 index in ring: 0 offset: 1 total nodes in ring: 16
+[2026-11-17 03:03:04.222] [workload] [info] sys[12] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[12]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[12]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[12], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[12], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[13] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[13]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[13]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[13], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[13], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[14] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[14]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[14]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[14], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[14], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[15] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[15]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[15]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[15], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[15], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[0] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[0]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[0]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[0], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[0], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[1] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[1]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[1]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[1], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[1], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[2] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[2]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[2]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[2], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[2], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[3] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[3]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[3]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[3], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[3], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[4] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[4]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[4]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[4], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[4], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[5] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[5]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[5]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[5], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[5], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[6] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[6]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[6]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[6], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[6], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[7] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[7]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[7]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[7], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[7], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[8] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[8]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[8]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[8], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[8], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[9] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[9]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[9]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[9], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[9], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[10] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[10]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[10]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[10], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[10], Comm time: 323560
+[2026-11-17 03:03:04.222] [workload] [info] sys[11] finished, 323560 cycles, exposed communication 323560 cycles.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[11]. Post statistics processing start.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[11]. Post statistics processing end.
+[2026-11-17 03:03:04.222] [statistics] [info] sys[11], Wall time: 323560
+[2026-11-17 03:03:04.222] [statistics] [info] sys[11], Comm time: 323560
+[2026-11-17 03:03:04.230] [system] [warning] Exiting
+
+=== EXERCISE I: All-Gather on a Ring, 1 MiB per rank, 50 GB/s, 500 ns, Ring_4chunks ===
+$ --workload=all_gather/4npus_1MB --system=Ring_4chunks.json --network=Ring_4npus.yml
+      4 Comm time: 64744
+$ --workload=all_gather/8npus_1MB --system=Ring_4chunks.json --network=Ring_8npus.yml
+      8 Comm time: 151016
+$ --workload=all_gather/16npus_1MB --system=Ring_4chunks.json --network=Ring_16npus.yml
+      16 Comm time: 323560
+
+=== EXERCISE II: 8 NPUs, Switch, 936.25 ns, HGX-H100-validated, 1 MiB traces ===
+$ --workload=all_gather/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 100GB/s
+      8 Comm time: 97157
+$ --workload=all_gather/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 300GB/s
+      8 Comm time: 49973
+$ --workload=all_gather/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 500GB/s
+      8 Comm time: 40520
+$ --workload=all_gather/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 700GB/s
+      8 Comm time: 36488
+$ --workload=all_gather/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 900GB/s
+      8 Comm time: 34227
+$ --workload=all_reduce/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 100GB/s
+      8 Comm time: 70479
+$ --workload=all_reduce/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 300GB/s
+      8 Comm time: 58851
+$ --workload=all_reduce/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 500GB/s
+      8 Comm time: 56571
+$ --workload=all_reduce/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 700GB/s
+      8 Comm time: 55545
+$ --workload=all_reduce/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 900GB/s
+      8 Comm time: 55031
+$ --workload=all_to_all/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 100GB/s
+      8 Comm time: 139877
+$ --workload=all_to_all/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 300GB/s
+      8 Comm time: 116825
+$ --workload=all_to_all/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 500GB/s
+      8 Comm time: 112305
+$ --workload=all_to_all/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 700GB/s
+      8 Comm time: 110271
+$ --workload=all_to_all/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 900GB/s
+      8 Comm time: 109253
+$ --workload=reduce_scatter/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 100GB/s
+      8 Comm time: 35591
+$ --workload=reduce_scatter/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 300GB/s
+      8 Comm time: 29675
+$ --workload=reduce_scatter/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 500GB/s
+      8 Comm time: 28515
+$ --workload=reduce_scatter/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 700GB/s
+      8 Comm time: 27993
+$ --workload=reduce_scatter/8npus_1MB --system=HGX-H100-validated.json --network=Switch 8npus 900GB/s
+      8 Comm time: 27731
+
+=== EXTRA PROBES (not required by the lab): isolating the latency floor ===
+$ [floor] --workload=reduce_scatter/8npus_1MB --network=Switch 8npus bw=1000000.0 GB/s lat=936.25 ns
+      8 Comm time: 26746
+$ [floor] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=1000000.0 GB/s lat=936.25 ns
+      8 Comm time: 26368
+$ [floor] --workload=all_reduce/8npus_1MB --network=Switch 8npus bw=1000000.0 GB/s lat=936.25 ns
+      8 Comm time: 53094
+$ [floor] --workload=all_to_all/8npus_1MB --network=Switch 8npus bw=1000000.0 GB/s lat=936.25 ns
+      8 Comm time: 105412
+$ [lat0] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=900.0 GB/s lat=0.0 ns
+      8 Comm time: 8019
+$ [lat0] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=100000.0 GB/s lat=0.0 ns
+      8 Comm time: 218
+$ [infbw] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=100000.0 GB/s lat=936.25 ns
+      8 Comm time: 26426
+
+=== EXTRA PROBES: All-Gather vs All-Reduce crossover ===
+$ [cross] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=190.0 GB/s lat=936.25 ns
+      8 Comm time: 63632
+$ [cross] --workload=all_reduce/8npus_1MB --network=Switch 8npus bw=190.0 GB/s lat=936.25 ns
+      8 Comm time: 62214
+$ [cross] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=200.0 GB/s lat=936.25 ns
+      8 Comm time: 61748
+$ [cross] --workload=all_reduce/8npus_1MB --network=Switch 8npus bw=200.0 GB/s lat=936.25 ns
+      8 Comm time: 61758
+$ [cross] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=210.0 GB/s lat=936.25 ns
+      8 Comm time: 60066
+$ [cross] --workload=all_reduce/8npus_1MB --network=Switch 8npus bw=210.0 GB/s lat=936.25 ns
+      8 Comm time: 61359
+$ [cross] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=250.0 GB/s lat=936.25 ns
+      8 Comm time: 54672
+$ [cross] --workload=all_reduce/8npus_1MB --network=Switch 8npus bw=250.0 GB/s lat=936.25 ns
+      8 Comm time: 60048
+$ [cross] --workload=all_gather/8npus_1MB --network=Switch 8npus bw=400.0 GB/s lat=936.25 ns
+      8 Comm time: 44058
+$ [cross] --workload=all_reduce/8npus_1MB --network=Switch 8npus bw=400.0 GB/s lat=936.25 ns
+      8 Comm time: 57426
+
+# end of session 2026-11-17T03:04:13Z
