@@ -32,7 +32,7 @@ The 4 in this lab:
 
 A **ring** arranges the ranks in a circle, each sending only to its 1 neighbour. A **switch** lets any rank reach any other through shared hardware. Both appear in this lab: Exercise I is a Ring, Exercise II is a Switch.
 
-The thing to hold onto about a ring is that it takes **N-1 steps**, and the amount crossing any single link per step does not depend on N:
+Note - rings takes **N-1 steps**, and the amount crossing any single link per step does not depend on N:
 
 ![How a ring All-Gather works](images/ring_allgather_explained.png)
 
@@ -63,7 +63,7 @@ Astra-Sim reports **ticks**, and for this backend 1 tick = 1 ns, so microseconds
 - **Driver:** `code/run_sweeps.py` runs all 24 simulations and writes `results.csv`; `code/plot_sweeps.py` and `code/plot_ring.py` draw the figures. `runs/cluster-session.log` is the raw output of the cluster session, and `runs/*.log` the per-run logs
 - **Which number I report:** Astra-Sim prints a Wall time and a Comm time per NPU. Per the lab I take the **max across NPUs**, never the sum. Every NPU reported the identical value in all 24 runs, so max and min coincide here. The `uniq -c` counts in the session log are what show that (`16 Comm time: 323560` means all 16 agreed)
 
-Two notes from actually doing this:
+notes:
 
 **The results do not depend on the machine.** I ran the full sweep twice: once on a separate machine with its own build of the same pinned commit, and once in the course container on the cluster. All 41 runs (24 for the exercises, 17 probes) returned identical tick counts, down to the digit; the cluster side is recorded in `cluster-verification.csv` and `runs/cluster-session.log`. The analytical backend has no timing-dependent behaviour, so what comes out is a function of the inputs and the revision, not of the host. Worth knowing before spending a compute allocation on a re-run.
 
@@ -98,7 +98,7 @@ The practical point is that this is the pathological case. In a real training st
 | `system/` | JSON | scheduling policy, chunking, and which algorithm implements each collective |
 | `remote_memory/` | JSON | memory expansion model, here `NO_MEMORY_EXPANSION` |
 
-A few things worth noting after poking at them:
+notes:
 
 **The workload traces are tiny.** Each `.et` is 81 to 85 bytes. They are binary protobuf, so they cannot be edited as text, but they can be read with the Chakra schema that the build generates (`extern/graph_frontend/chakra/schema/protobuf/et_def_pb2.py`). Decoding rank 0 of each 8 NPU microbenchmark gives 1 node each:
 
@@ -154,7 +154,7 @@ The measured ratios say the same thing: 151.016 / 64.744 = 2.3325 against a pred
 
 *Method:* the per step figure is just comm time divided by N-1. The slope is the difference between consecutive points divided by the difference in step count, computed in `code/plot_sweeps.py`; both intervals agreeing to 3 decimals is what makes the straight line claim safe rather than eyeballed.
 
-**The part worth saying out loud:** time grows with N but the data gathered also grows with N, so cost per byte delivered is nearly flat. That is the sense in which ring All-Gather is bandwidth efficient. What it is not is latency efficient, because N-1 sequential steps means the ring gets deeper every time you add a GPU, and each step is a dependency, not something you can parallelize away. A 16 NPU ring spends 323 us moving 1 MiB per rank. That is the argument for hierarchical or tree collectives once N gets large, and it is why real multi node systems do not run 1 flat ring across every GPU.
+** time grows with N but the data gathered also grows with N, so cost per byte delivered is nearly flat. That is the sense in which ring All-Gather is bandwidth efficient. What it is not is latency efficient, because N-1 sequential steps means the ring gets deeper every time you add a GPU, and each step is a dependency, not something you can parallelize away. A 16 NPU ring spends 323 us moving 1 MiB per rank. That is the argument for hierarchical or tree collectives once N gets large, and it is why real multi node systems do not run 1 flat ring across every GPU.
 
 ## Exercise II: Bandwidth's impact on different collectives
 
